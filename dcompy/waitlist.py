@@ -13,6 +13,7 @@ import threading
 
 class _Item:
     def __init__(self):
+        self.protocol = 0
         self.port = 0
         self.timeout = 0
         self.req = bytearray()
@@ -55,9 +56,10 @@ def _delete_timeout_item():
             _items.remove(item)
 
 
-def call(port: int, dst_ia: int, rid: int, timeout: int, req: bytearray) -> (bytearray, int):
+def call(protocol: int, port: int, dst_ia: int, rid: int, timeout: int, req: bytearray) -> (bytearray, int):
     """
     RPC同步调用
+    :param protocol: 协议号
     :param port: 通信端口号
     :param dst_ia: 目标ia地址
     :param rid: 服务号
@@ -70,12 +72,13 @@ def call(port: int, dst_ia: int, rid: int, timeout: int, req: bytearray) -> (byt
         req = bytearray()
 
     token = get_token()
-    _send_frame(port, dst_ia, code, rid, token, req)
+    _send_frame(protocol, port, dst_ia, code, rid, token, req)
 
     if code == CODE_NON:
         return bytearray(), SYSTEM_OK
 
     item = _Item()
+    item.protocol = protocol
     item.port = port
     item.timeout = timeout * 1000
     item.req = req
@@ -102,10 +105,11 @@ def call(port: int, dst_ia: int, rid: int, timeout: int, req: bytearray) -> (byt
     return item.resp, item.result
 
 
-def call_async(port: int, dst_ia: int, rid: int, timeout: int, req: bytearray,
+def call_async(protocol: int, port: int, dst_ia: int, rid: int, timeout: int, req: bytearray,
                ack_callback: Callable[[bytearray, int], None]):
     """
     RPC异步调用
+    :param protocol: 协议号
     :param port: 通信端口号
     :param dst_ia: 目标ia地址
     :param rid: 服务号
@@ -120,13 +124,14 @@ def call_async(port: int, dst_ia: int, rid: int, timeout: int, req: bytearray,
         req = bytearray()
 
     token = get_token()
-    _send_frame(port, dst_ia, code, rid, token, req)
+    _send_frame(protocol, port, dst_ia, code, rid, token, req)
 
     if code == CODE_NON:
         return
 
     item = _Item()
     item.ack_callback = ack_callback
+    item.protocol = protocol
     item.port = port
     item.timeout = timeout * 1000
     item.req = req
@@ -141,9 +146,9 @@ def call_async(port: int, dst_ia: int, rid: int, timeout: int, req: bytearray,
     _lock.release()
 
 
-def _send_frame(port: int, dst_ia: int, code: int, rid: int, token: int, data: bytearray):
+def _send_frame(protocol: int, port: int, dst_ia: int, code: int, rid: int, token: int, data: bytearray):
     if len(data) >= SINGLE_FRAME_SIZE_MAX:
-        block_tx(port, dst_ia, code, rid, token, data)
+        block_tx(protocol, port, dst_ia, code, rid, token, data)
         return
 
     frame = Frame()
@@ -153,24 +158,24 @@ def _send_frame(port: int, dst_ia: int, code: int, rid: int, token: int, data: b
     frame.control_word.token = token
     frame.control_word.payload_len = len(data)
     frame.payload.extend(data)
-    send(port, dst_ia, frame)
+    send(protocol, port, dst_ia, frame)
 
 
-def rx_ack_frame(port: int, src_ia: int, frame: Frame):
+def rx_ack_frame(protocol: int, port: int, src_ia: int, frame: Frame):
     """
     接收到ACK帧时处理函数
     """
     _lock.acquire()
 
     for item in _items:
-        if _check_item_and_deal_ack_frame(port, src_ia, frame, item):
+        if _check_item_and_deal_ack_frame(protocol, port, src_ia, frame, item):
             break
 
     _lock.release()
 
 
-def _check_item_and_deal_ack_frame(port: int, src_ia: int, frame: Frame, item: _Item) -> bool:
-    if item.port != port or item.dst_ia != src_ia or item.rid != frame.control_word.rid \
+def _check_item_and_deal_ack_frame(protocol: int, port: int, src_ia: int, frame: Frame, item: _Item) -> bool:
+    if item.protocol != protocol or item.port != port or item.dst_ia != src_ia or item.rid != frame.control_word.rid \
             or item.token != frame.control_word.token:
         return False
 
@@ -186,21 +191,21 @@ def _check_item_and_deal_ack_frame(port: int, src_ia: int, frame: Frame, item: _
     return True
 
 
-def rx_rst_frame(port: int, src_ia: int, frame: Frame):
+def rx_rst_frame(protocol: int, port: int, src_ia: int, frame: Frame):
     """
     接收到RST帧时处理函数
     """
     _lock.acquire()
 
     for item in _items:
-        _deal_rst_frame(port, src_ia, frame, item)
+        _deal_rst_frame(protocol, port, src_ia, frame, item)
 
     _lock.release()
 
 
-def _deal_rst_frame(port: int, src_ia: int, frame: Frame, item: _Item):
-    if item.port != port or item.dst_ia != src_ia or item.rid != frame.control_word.rid or \
-            item.token != frame.control_word.token:
+def _deal_rst_frame(protocol: int, port: int, src_ia: int, frame: Frame, item: _Item):
+    if item.protocol != protocol or item.port != port or item.dst_ia != src_ia or item.rid != frame.control_word.rid \
+            or item.token != frame.control_word.token:
         return False
     result = frame.payload[0]
 

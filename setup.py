@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 filepath = 'README.md'
 setup(
         name="dcompy",
-        version="1.0",
+        version="1.1",
         description="dcom python package",
         long_description=open(filepath, encoding='utf-8').read(),
         long_description_content_type="text/markdown",

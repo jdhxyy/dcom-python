@@ -24,8 +24,8 @@ class LoadParam:
         # API接口
         # 是否允许发送.函数原型:func(port: int) bool
         self.is_allow_send = None  # type: Callable[[int], bool]
-        # 发送的是DCOM协议数据.函数原型:func(port: int, dst_ia: int, bytes: bytearray)
-        self.send = None  # type: Callable[[int, int, bytearray], None]
+        # 发送的是DCOM协议数据.函数原型:func(protocol: int, port: int, dst_ia: int, bytes: bytearray)
+        self.send = None  # type: Callable[[int, int, int, bytearray], None]
 
 
 _token = 0

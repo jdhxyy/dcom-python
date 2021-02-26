@@ -7,7 +7,7 @@ def main():
 
 def case1():
     load()
-    req, error = dcompy.call(0, 0x1234, 1, 3000, bytearray([1, 2, 3]))
+    req, error = dcompy.call(0, 0, 0x1234, 1, 3000, bytearray([1, 2, 3]))
     print('0x%x' % error)
     print_hex(req)
 
@@ -25,8 +25,8 @@ def is_allow_send(port: int) -> bool:
     return True
 
 
-def send(port: int, dst_ia: int, data: bytearray):
-    print("dst_ia:%x, port:%d send:" % (dst_ia, port))
+def send(protocol: int, port: int, dst_ia: int, data: bytearray):
+    print("protocol:%d dst_ia:%x, port:%d send:" % (protocol, dst_ia, port))
     print_hex(data)
 
 
@@ -38,7 +38,7 @@ def print_hex(data: bytearray):
 
 def case2():
     load()
-    dcompy.call_async(0, 0x1234, 1, 3000, bytearray([1, 2, 3]), deal_resp)
+    dcompy.call_async(1, 0, 0x1234, 1, 3000, bytearray([1, 2, 3]), deal_resp)
 
 
 def deal_resp(req: bytearray, error: int):
@@ -48,14 +48,14 @@ def deal_resp(req: bytearray, error: int):
 
 def case3():
     load()
-    req, error = dcompy.call(0, 0x1234, 1, 0, bytearray([1, 2, 3]))
+    req, error = dcompy.call(0, 0, 0x1234, 1, 0, bytearray([1, 2, 3]))
     print('0x%x' % error)
     print_hex(req)
 
 
 def case4():
     load()
-    dcompy.call_async(0, 0x1234, 1, 0, bytearray([1, 2, 3]), deal_resp)
+    dcompy.call_async(2, 0, 0x1234, 1, 1000, bytearray([1, 2, 3]), deal_resp)
 
 
 def case5():
@@ -63,7 +63,7 @@ def case5():
     arr = bytearray()
     for i in range(501):
         arr.append(i & 0xff)
-    req, error = dcompy.call(0, 0x1234, 1, 0, arr)
+    req, error = dcompy.call(1, 0, 0x1234, 1, 0, arr)
     print('error:0x%x' % error)
     print_hex(req)
 
@@ -73,7 +73,7 @@ def case6():
     arr = bytearray()
     for i in range(501):
         arr.append(i & 0xff)
-    req, error = dcompy.call(0, 0x1234, 1, 3000, arr)
+    req, error = dcompy.call(1, 0, 0x1234, 1, 3000, arr)
     print('error:0x%x' % error)
     print_hex(req)
 
