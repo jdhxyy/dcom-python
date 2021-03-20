@@ -16,7 +16,7 @@ import threading
 class _Item:
     def __init__(self):
         self.protocol = 0
-        self.port = 0
+        self.pipe = 0
         self.dst_ia = 0
         self.code = 0
         self.rid = 0
@@ -87,10 +87,10 @@ def _block_tx_send_frame(item: _Item, offset: int):
     frame.block_header.total = len(item.data)
     frame.block_header.offset = offset
     frame.payload.extend(item.data[offset:offset + payload_len])
-    block_send(item.protocol, item.port, item.dst_ia, frame)
+    block_send(item.protocol, item.pipe, item.dst_ia, frame)
 
 
-def block_tx(protocol: int, port: int, dst_ia: int, code: int, rid: int, token: int, data: bytearray):
+def block_tx(protocol: int, pipe: int, dst_ia: int, code: int, rid: int, token: int, data: bytearray):
     """
     块传输发送
     """
@@ -99,11 +99,11 @@ def block_tx(protocol: int, port: int, dst_ia: int, code: int, rid: int, token: 
 
     _lock.acquire()
 
-    if _is_item_exist(protocol, port, dst_ia, code, rid, token):
+    if _is_item_exist(protocol, pipe, dst_ia, code, rid, token):
         _lock.release()
         return
 
-    item = _create_item(protocol, port, dst_ia, code, rid, token, data)
+    item = _create_item(protocol, pipe, dst_ia, code, rid, token, data)
     _block_tx_send_frame(item, 0)
     item.first_frame_retry_num += 1
     item.first_frame_retry_time = get_time()
@@ -112,18 +112,18 @@ def block_tx(protocol: int, port: int, dst_ia: int, code: int, rid: int, token: 
     _lock.release()
 
 
-def _is_item_exist(protocol: int, port: int, dst_ia: int, code: int, rid: int, token: int) -> bool:
+def _is_item_exist(protocol: int, pipe: int, dst_ia: int, code: int, rid: int, token: int) -> bool:
     for item in _items:
-        if item.protocol == protocol and item.port == port and item.dst_ia == dst_ia and item.code == code \
+        if item.protocol == protocol and item.pipe == pipe and item.dst_ia == dst_ia and item.code == code \
                 and item.rid == rid and item.token == token:
             return True
     return False
 
 
-def _create_item(protocol: int, port: int, dst_ia: int, code: int, rid: int, token: int, data: bytearray) -> _Item:
+def _create_item(protocol: int, pipe: int, dst_ia: int, code: int, rid: int, token: int, data: bytearray) -> _Item:
     item = _Item()
     item.protocol = protocol
-    item.port = port
+    item.pipe = pipe
     item.dst_ia = dst_ia
     item.code = code
     item.rid = rid
@@ -139,7 +139,7 @@ def _create_item(protocol: int, port: int, dst_ia: int, code: int, rid: int, tok
     return item
 
 
-def block_rx_back_frame(protocol: int, port: int, src_ia: int, frame: Frame):
+def block_rx_back_frame(protocol: int, pipe: int, src_ia: int, frame: Frame):
     """
     接收到BACK帧时处理函数
     """
@@ -148,17 +148,17 @@ def block_rx_back_frame(protocol: int, port: int, src_ia: int, frame: Frame):
 
     _lock.acquire()
     for item in _items:
-        if _check_item_and_deal_back_frame(protocol, port, src_ia, frame, item):
+        if _check_item_and_deal_back_frame(protocol, pipe, src_ia, frame, item):
             break
     _lock.release()
 
 
-def _check_item_and_deal_back_frame(protocol: int, port: int, src_ia: int, frame: Frame, item: _Item) -> bool:
+def _check_item_and_deal_back_frame(protocol: int, pipe: int, src_ia: int, frame: Frame, item: _Item) -> bool:
     """
     checkNodeAndDealBackFrame 检查节点是否符合条件,符合则处理BACK帧
     :return: 返回true表示节点符合条件
     """
-    if item.protocol != protocol or item.port != port or item.dst_ia != src_ia or \
+    if item.protocol != protocol or item.pipe != pipe or item.dst_ia != src_ia or \
             item.rid != frame.control_word.rid or item.token != frame.control_word.token:
         return False
     if frame.control_word.payload_len != 2:
@@ -176,13 +176,13 @@ def _check_item_and_deal_back_frame(protocol: int, port: int, src_ia: int, frame
     return True
 
 
-def block_tx_deal_rst_frame(protocol: int, port: int, src_ia: int, frame: Frame):
+def block_tx_deal_rst_frame(protocol: int, pipe: int, src_ia: int, frame: Frame):
     """
     块传输发送模块处理复位连接帧
     """
     _lock.acquire()
     for item in _items:
-        if item.protocol == protocol and item.port == port and item.dst_ia == src_ia \
+        if item.protocol == protocol and item.pipe == pipe and item.dst_ia == src_ia \
                 and item.rid == frame.control_word.rid and item.token == frame.control_word.token:
             _items.remove(item)
             break

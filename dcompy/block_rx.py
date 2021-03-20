@@ -17,7 +17,7 @@ import threading
 class _Item:
     def __init__(self):
         self.protocol = 0
-        self.port = 0
+        self.pipe = 0
         self.src_ia = 0
         self.frame = Frame()
         self.block_header = BlockHeader()
@@ -55,7 +55,7 @@ def _send_all_back_frame():
             _items.remove(i)
             continue
         # 超时重发
-        if not load_param.is_allow_send(i.port):
+        if not load_param.is_allow_send(i.pipe):
             continue
         _send_back_frame(i)
 
@@ -69,7 +69,7 @@ def _send_back_frame(item: _Item):
     frame.control_word.payload_len = 2
     frame.payload.append((item.block_header.offset >> 8) & 0xff)
     frame.payload.append(item.block_header.offset & 0xff)
-    send(item.protocol, item.port, item.src_ia, frame)
+    send(item.protocol, item.pipe, item.src_ia, frame)
 
     item.retry_nums += 1
     item.last_tx_time = get_time()
@@ -78,28 +78,28 @@ def _send_back_frame(item: _Item):
 def block_rx_set_callback(recv_func):
     """
     设置接收回调函数
-    :param recv_func:格式func(port: int, src_ia: int, frame Frame)
+    :param recv_func:格式func(pipe: int, src_ia: int, frame Frame)
     """
     global _block_recv
     _block_recv = recv_func
 
 
-def block_rx_receive(protocol: int, port: int, src_ia: int, frame: BlockFrame):
+def block_rx_receive(protocol: int, pipe: int, src_ia: int, frame: BlockFrame):
     """
     块传输接收数据
     """
     _lock.acquire()
-    item, err = _get_item(protocol, port, src_ia, frame)
+    item, err = _get_item(protocol, pipe, src_ia, frame)
     if not err:
-        _create_and_append_item(protocol, port, src_ia, frame)
+        _create_and_append_item(protocol, pipe, src_ia, frame)
     else:
-        _edit_item(protocol, port, item, frame)
+        _edit_item(protocol, pipe, item, frame)
     _lock.release()
 
 
-def _get_item(protocol: int, port: int, src_ia: int, frame: BlockFrame) -> (_Item, bool):
+def _get_item(protocol: int, pipe: int, src_ia: int, frame: BlockFrame) -> (_Item, bool):
     for i in _items:
-        if i.protocol == protocol and i.port == port and i.src_ia == src_ia \
+        if i.protocol == protocol and i.pipe == pipe and i.src_ia == src_ia \
                 and i.frame.control_word.token == frame.control_word.token \
                 and i.frame.control_word.rid == frame.control_word.rid \
                 and i.frame.control_word.code == frame.control_word.code:
@@ -107,15 +107,15 @@ def _get_item(protocol: int, port: int, src_ia: int, frame: BlockFrame) -> (_Ite
     return _Item(), False
 
 
-def _create_and_append_item(protocol: int, port: int, src_ia: int, frame: BlockFrame):
+def _create_and_append_item(protocol: int, pipe: int, src_ia: int, frame: BlockFrame):
     if frame.block_header.offset != 0:
-        send_rst_frame(protocol, port, src_ia, SYSTEM_ERROR_WRONG_BLOCK_OFFSET, frame.control_word.rid,
+        send_rst_frame(protocol, pipe, src_ia, SYSTEM_ERROR_WRONG_BLOCK_OFFSET, frame.control_word.rid,
                        frame.control_word.token)
         return
 
     item = _Item()
     item.protocol = protocol
-    item.port = port
+    item.pipe = pipe
     item.src_ia = src_ia
     item.frame.control_word = frame.control_word
     item.block_header = frame.block_header
@@ -125,10 +125,10 @@ def _create_and_append_item(protocol: int, port: int, src_ia: int, frame: BlockF
     _send_back_frame(item)
 
 
-def _edit_item(protocol: int, port: int, item: _Item, frame: BlockFrame):
+def _edit_item(protocol: int, pipe: int, item: _Item, frame: BlockFrame):
     global _block_recv
 
-    if item.block_header.offset != frame.block_header.offset or item.protocol != protocol or item.port != port:
+    if item.block_header.offset != frame.block_header.offset or item.protocol != protocol or item.pipe != pipe:
         return
 
     item.frame.payload.extend(frame.payload)
@@ -143,18 +143,18 @@ def _edit_item(protocol: int, port: int, item: _Item, frame: BlockFrame):
             _items.remove(item)
             return
         if _block_recv is not None:
-            _block_recv(item.protocol, item.port, item.src_ia, item.frame)
+            _block_recv(item.protocol, item.pipe, item.src_ia, item.frame)
         _items.remove(item)
 
 
-def block_rx_deal_rst_frame(protocol: int, port: int, src_ia: int, frame: Frame):
+def block_rx_deal_rst_frame(protocol: int, pipe: int, src_ia: int, frame: Frame):
     """
     块传输接收模块处理复位连接帧
     """
     _lock.acquire()
 
     for i in _items:
-        if i.protocol == protocol and i.port == port and i.src_ia == src_ia \
+        if i.protocol == protocol and i.pipe == pipe and i.src_ia == src_ia \
                 and i.frame.control_word.token == frame.control_word.token \
                 and i.frame.control_word.rid == frame.control_word.rid:
             _items.remove(i)

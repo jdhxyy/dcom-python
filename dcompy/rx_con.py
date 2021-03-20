@@ -8,7 +8,7 @@ from dcompy.callback import *
 from dcompy.block_tx import *
 
 
-def rx_con(protocol: int, port: int, src_ia: int, frame: Frame):
+def rx_con(protocol: int, pipe: int, src_ia: int, frame: Frame):
     """
     接收到连接帧时处理函数
     """
@@ -19,12 +19,12 @@ def rx_con(protocol: int, port: int, src_ia: int, frame: Frame):
         return
 
     if err != SYSTEM_OK:
-        send_rst_frame(protocol, port, src_ia, err, frame.control_word.rid, frame.control_word.token)
+        send_rst_frame(protocol, pipe, src_ia, err, frame.control_word.rid, frame.control_word.token)
         return
 
     if resp and len(resp) > SINGLE_FRAME_SIZE_MAX:
         # 长度过长启动块传输
-        block_tx(protocol, port, src_ia, CODE_ACK, frame.control_word.rid, frame.control_word.token, resp)
+        block_tx(protocol, pipe, src_ia, CODE_ACK, frame.control_word.rid, frame.control_word.token, resp)
         return
 
     ack_frame = Frame()
@@ -37,4 +37,4 @@ def rx_con(protocol: int, port: int, src_ia: int, frame: Frame):
         ack_frame.payload.extend(resp)
     else:
         ack_frame.control_word.payload_len = 0
-    send(protocol, port, src_ia, ack_frame)
+    send(protocol, pipe, src_ia, ack_frame)

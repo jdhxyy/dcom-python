@@ -8,6 +8,8 @@ from dcompy.protocol import *
 
 import unittest
 import time
+import socket
+
 from typing import Callable
 
 
@@ -15,6 +17,7 @@ class LoadParam:
     """
     载入参数
     """
+
     def __init__(self):
         # 块传输帧重试间隔.单位:ms
         self.block_retry_interval = 0
@@ -22,9 +25,9 @@ class LoadParam:
         self.block_retry_max_num = 0
 
         # API接口
-        # 是否允许发送.函数原型:func(port: int) bool
+        # 是否允许发送.函数原型:func(pipe: int) bool
         self.is_allow_send = None  # type: Callable[[int], bool]
-        # 发送的是DCOM协议数据.函数原型:func(protocol: int, port: int, dst_ia: int, bytes: bytearray)
+        # 发送的是DCOM协议数据.函数原型:func(protocol: int, pipe: int, dst_ia: int, bytes: bytearray)
         self.send = None  # type: Callable[[int, int, int, bytearray], None]
 
 
@@ -167,6 +170,32 @@ def get_time():
     获取当前时间.单位:us
     """
     return time.time() * 1000000
+
+
+def addr_to_pipe(ip: str, pipe: int) -> int:
+    """
+    网络地址转换为端口号
+    转换规则为端口号+ip地址.大端排列
+    """
+    arr = socket.inet_aton(ip)
+    ia = (arr[0] << 24) + (arr[1] << 16) + (arr[2] << 8) + arr[3]
+    ia |= (((pipe >> 8) & 0xff) << 40) + ((pipe & 0xff) << 32)
+    return ia
+
+
+def pipe_to_addr(ia: int) -> (str, int):
+    """
+    端口号转换为网络地址
+    转换规则为网络端口+ip地址.大端排列
+    """
+    ip = bytearray()
+    ip.append((ia >> 24) & 0xff)
+    ip.append((ia >> 16) & 0xff)
+    ip.append((ia >> 8) & 0xff)
+    ip.append(ia & 0xff)
+
+    port = (ia >> 32) & 0xffff
+    return socket.inet_ntoa(ip), port
 
 
 def set_load_param(param: LoadParam):
