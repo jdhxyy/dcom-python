@@ -12,7 +12,7 @@ def rx_con(protocol: int, pipe: int, src_ia: int, frame: Frame):
     """
     接收到连接帧时处理函数
     """
-    resp, err = service_callback(protocol, frame.control_word.rid, frame.payload)
+    resp, err = service_callback(protocol, pipe, src_ia, frame.control_word.rid, frame.payload)
 
     # NON不需要应答
     if frame.control_word.code == CODE_NON:

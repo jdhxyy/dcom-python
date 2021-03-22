@@ -172,15 +172,15 @@ def get_time():
     return time.time() * 1000000
 
 
-def addr_to_pipe(ip: str, pipe: int) -> int:
+def addr_to_pipe(ip: str, port: int) -> int:
     """
     网络地址转换为端口号
     转换规则为端口号+ip地址.大端排列
     """
     arr = socket.inet_aton(ip)
-    ia = (arr[0] << 24) + (arr[1] << 16) + (arr[2] << 8) + arr[3]
-    ia |= (((pipe >> 8) & 0xff) << 40) + ((pipe & 0xff) << 32)
-    return ia
+    pipe = (arr[0] << 24) + (arr[1] << 16) + (arr[2] << 8) + arr[3]
+    pipe |= (((port >> 8) & 0xff) << 40) + ((port & 0xff) << 32)
+    return pipe
 
 
 def pipe_to_addr(ia: int) -> (str, int):
