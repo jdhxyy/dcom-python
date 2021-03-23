@@ -4,6 +4,8 @@ Copyright 2021-2021 The jdh99 Authors. All rights reserved.
 Authors: jdh99 <jdh821@163.com>
 """
 
+import dcompy.log as log
+
 from dcompy.block_tx import *
 from dcompy.system_error import *
 
@@ -52,6 +54,7 @@ def _delete_timeout_item():
             continue
 
         if now - item.time_start > item.timeout:
+            log.warn("async call timeout.token:%d", item.token)
             item.ack_callback(bytearray(), SYSTEM_ERROR_RX_TIMEOUT)
             _items.remove(item)
 
@@ -67,6 +70,7 @@ def call(protocol: int, pipe: int, dst_ia: int, rid: int, timeout: int, req: byt
     :param req: 请求数据.无数据可填bytearray()或者None
     :return: 返回值是应答字节流和错误码.错误码非SYSTEM_OK表示调用失败
     """
+    log.info('call.protocol:%d pipe:0x%x dst ia:0x%x rid:%d timeout:%d', protocol, pipe, dst_ia, rid, timeout)
     code = CODE_CON if timeout > 0 else CODE_NON
     if not req:
         req = bytearray()
@@ -96,12 +100,14 @@ def call(protocol: int, pipe: int, dst_ia: int, rid: int, timeout: int, req: byt
         if item.is_rx_ack:
             break
         if get_time() - item.time_start > item.timeout:
+            log.warn("call timeout.token:%d", item.token)
             item.result = SYSTEM_ERROR_RX_TIMEOUT
             break
 
     _lock.acquire()
     _items.remove(item)
     _lock.release()
+    log.info('call resp.result:%d len:%d', item.result, len(item.resp))
     return item.resp, item.result
 
 
@@ -124,6 +130,8 @@ def call_async(protocol: int, pipe: int, dst_ia: int, rid: int, timeout: int, re
         req = bytearray()
 
     token = get_token()
+    log.info('call async.token:%d protocol:%d pipe:0x%x dst ia:0x%x rid:%d timeout:%d', token, protocol, pipe, dst_ia,
+             rid, timeout)
     _send_frame(protocol, pipe, dst_ia, code, rid, token, req)
 
     if code == CODE_NON:
@@ -158,6 +166,7 @@ def _send_frame(protocol: int, pipe: int, dst_ia: int, code: int, rid: int, toke
     frame.control_word.token = token
     frame.control_word.payload_len = len(data)
     frame.payload.extend(data)
+    log.info('send frame.token:%d', token)
     send(protocol, pipe, dst_ia, frame)
 
 
@@ -167,6 +176,7 @@ def rx_ack_frame(protocol: int, pipe: int, src_ia: int, frame: Frame):
     """
     _lock.acquire()
 
+    log.info('rx ack frame.src ia:0x%x', src_ia)
     for item in _items:
         if _check_item_and_deal_ack_frame(protocol, pipe, src_ia, frame, item):
             break
@@ -179,6 +189,7 @@ def _check_item_and_deal_ack_frame(protocol: int, pipe: int, src_ia: int, frame:
             or item.token != frame.control_word.token:
         return False
 
+    log.info('deal ack frame.token:%d', item.token)
     if item.ack_callback:
         # 回调方式
         item.ack_callback(frame.payload, SYSTEM_OK)
@@ -197,6 +208,7 @@ def rx_rst_frame(protocol: int, pipe: int, src_ia: int, frame: Frame):
     """
     _lock.acquire()
 
+    log.warn('rx rst frame.src ia:0x%x', src_ia)
     for item in _items:
         _deal_rst_frame(protocol, pipe, src_ia, frame, item)
 
@@ -208,6 +220,7 @@ def _deal_rst_frame(protocol: int, pipe: int, src_ia: int, frame: Frame, item: _
             or item.token != frame.control_word.token:
         return False
     result = frame.payload[0]
+    log.warn('deal rst frame.token:%d result:0x%x', item.token, result)
 
     if item.ack_callback:
         # 回调方式
