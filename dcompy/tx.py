@@ -44,7 +44,8 @@ def send_rst_frame(protocol: int, pipe: int, dst_ia: int, error_code: int, rid: 
     """
     发送错误码
     """
-    log.warn('send rst frame!token:%d protocol:%d pipe:0x%x dst ia:0x%x', token, protocol, pipe, dst_ia)
+    log.info('send rst frame:0x%x!token:%d protocol:%d pipe:0x%x dst ia:0x%x', error_code, token, protocol, pipe,
+             dst_ia)
     frame = Frame()
     frame.control_word.code = CODE_RST
     frame.control_word.block_flag = 0
