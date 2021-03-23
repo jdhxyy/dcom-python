@@ -20,7 +20,8 @@ class _Item:
         self.timeout = 0
         self.req = bytearray()
         self.resp = bytearray()
-        self.time_start = 0
+        # 启动时间.单位:us.用于判断是否超过总超时
+        self.start_time = 0
         # 回调函数.存在则是异步调用
         self.ack_callback = None
 
@@ -30,6 +31,11 @@ class _Item:
         self.is_rx_ack = False
         self.result = SYSTEM_OK
 
+        # 上次发送时间戳.单位:us.用于重传
+        self.last_retry_timestamp = 0
+        self.retry_num = 0
+        self.code = 0
+
 
 _items = list()
 _lock = threading.Lock()
@@ -37,26 +43,63 @@ _lock = threading.Lock()
 
 async def waitlist_run():
     """
-    模块运行
+    模块运行.检查等待列表重发,超时等
     """
     while True:
-        _lock.acquire()
-        _delete_timeout_item()
-        _lock.release()
+        _check_wait_items()
         await asyncio.sleep(INTERVAL)
 
 
-def _delete_timeout_item():
-    now = get_time()
+def _check_wait_items():
+    _lock.acquire()
     for item in _items:
-        if item.ack_callback is None:
-            # 同步调用自己管理超时
-            continue
+        _retry_send(item)
+    _lock.release()
 
-        if now - item.time_start > item.timeout:
-            log.warn("async call timeout.token:%d", item.token)
+
+def _retry_send(item: _Item):
+    t = get_time()
+    if t - item.start_time > item.timeout:
+        log.warn('wait ack timeout!task failed!token:%d', item.token)
+        _items.remove(item)
+        if len(item.req) > SINGLE_FRAME_SIZE_MAX:
+            block_remove(item.protocol, item.pipe, item.dst_ia, item.code, item.rid, item.token)
+
+        if item.ack_callback:
+            # 回调方式
             item.ack_callback(bytearray(), SYSTEM_ERROR_RX_TIMEOUT)
-            _items.remove(item)
+        else:
+            # 同步调用
+            item.is_rx_ack = True
+            item.result = SYSTEM_ERROR_RX_TIMEOUT
+        return
+
+    # 块传输不用此处重传.块传输模块自己负责
+    if len(item.req) > SINGLE_FRAME_SIZE_MAX:
+        return
+
+    load_param = get_load_param()
+    if t - item.last_retry_timestamp < load_param.block_retry_interval * 1000:
+        return
+
+    # 重传
+    item.retry_num += 1
+    if item.retry_num >= load_param.block_retry_max_num:
+        log.warn('retry too many!task failed!token:%d', item.token)
+        _items.remove(item)
+
+        if item.ack_callback:
+            # 回调方式
+            item.ack_callback(bytearray(), SYSTEM_ERROR_RX_TIMEOUT)
+        else:
+            # 同步调用
+            item.is_rx_ack = True
+            item.result = SYSTEM_ERROR_RX_TIMEOUT
+        return
+
+    item.last_retry_timestamp = t
+    log.warn('retry send.token:%d retry num:%d', item.token, item.retry_num)
+    _send_frame(item.protocol, item.pipe, item.dst_ia, item.code, item.rid, item.token, item.req)
 
 
 def call(protocol: int, pipe: int, dst_ia: int, rid: int, timeout: int, req: bytearray) -> (bytearray, int):
@@ -86,11 +129,15 @@ def call(protocol: int, pipe: int, dst_ia: int, rid: int, timeout: int, req: byt
     item.pipe = pipe
     item.timeout = timeout * 1000
     item.req = req
-    item.time_start = get_time()
+    item.start_time = get_time()
 
     item.dst_ia = dst_ia
     item.rid = rid
     item.token = token
+    item.code = code
+
+    item.retry_num = 0
+    item.last_retry_timestamp = get_time()
 
     _lock.acquire()
     _items.append(item)
@@ -99,14 +146,7 @@ def call(protocol: int, pipe: int, dst_ia: int, rid: int, timeout: int, req: byt
     while True:
         if item.is_rx_ack:
             break
-        if get_time() - item.time_start > item.timeout:
-            log.warn("call timeout.token:%d", item.token)
-            item.result = SYSTEM_ERROR_RX_TIMEOUT
-            break
 
-    _lock.acquire()
-    _items.remove(item)
-    _lock.release()
     log.info('call resp.result:%d len:%d', item.result, len(item.resp))
     return item.resp, item.result
 
@@ -143,11 +183,15 @@ def call_async(protocol: int, pipe: int, dst_ia: int, rid: int, timeout: int, re
     item.pipe = pipe
     item.timeout = timeout * 1000
     item.req = req
-    item.time_start = get_time()
+    item.start_time = get_time()
 
     item.dst_ia = dst_ia
     item.rid = rid
     item.token = token
+    item.code = code
+
+    item.retry_num = 0
+    item.last_retry_timestamp = get_time()
 
     _lock.acquire()
     _items.append(item)
@@ -155,7 +199,7 @@ def call_async(protocol: int, pipe: int, dst_ia: int, rid: int, timeout: int, re
 
 
 def _send_frame(protocol: int, pipe: int, dst_ia: int, code: int, rid: int, token: int, data: bytearray):
-    if len(data) >= SINGLE_FRAME_SIZE_MAX:
+    if len(data) > SINGLE_FRAME_SIZE_MAX:
         block_tx(protocol, pipe, dst_ia, code, rid, token, data)
         return
 
@@ -190,10 +234,10 @@ def _check_item_and_deal_ack_frame(protocol: int, pipe: int, src_ia: int, frame:
         return False
 
     log.info('deal ack frame.token:%d', item.token)
+    _items.remove(item)
     if item.ack_callback:
         # 回调方式
         item.ack_callback(frame.payload, SYSTEM_OK)
-        _items.remove(item)
     else:
         # 同步调用
         item.is_rx_ack = True
@@ -221,11 +265,10 @@ def _deal_rst_frame(protocol: int, pipe: int, src_ia: int, frame: Frame, item: _
         return False
     result = frame.payload[0]
     log.warn('deal rst frame.token:%d result:0x%x', item.token, result)
-
+    _items.remove(item)
     if item.ack_callback:
         # 回调方式
         item.ack_callback(bytearray(), result)
-        _items.remove(item)
     else:
         # 同步调用
         item.is_rx_ack = True

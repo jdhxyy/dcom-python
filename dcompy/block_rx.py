@@ -52,15 +52,18 @@ def _send_all_back_frame():
         if now - i.last_tx_time < interval:
             continue
         if i.retry_nums > load_param.block_retry_max_num:
+            log.warn('block rx send back retry num too many!token:%d', i.frame.control_word.token)
             _items.remove(i)
             continue
         # 超时重发
         if not load_param.is_allow_send(i.pipe):
             continue
+        log.warn('block rx send back retry num:%d token:%d', i.retry_nums, i.frame.control_word.token)
         _send_back_frame(i)
 
 
 def _send_back_frame(item: _Item):
+    log.info('block rx send back frame.token:%d offset:%d', item.frame.control_word.token, item.block_header.offset)
     frame = Frame()
     frame.control_word.code = CODE_BACK
     frame.control_word.block_flag = 0
@@ -90,6 +93,7 @@ def block_rx_receive(protocol: int, pipe: int, src_ia: int, frame: BlockFrame):
     """
     _lock.acquire()
     item, err = _get_item(protocol, pipe, src_ia, frame)
+    log.info('block rx receive.token:%d src_ia:0x%x', frame.control_word.token, src_ia)
     if not err:
         _create_and_append_item(protocol, pipe, src_ia, frame)
     else:
@@ -109,6 +113,8 @@ def _get_item(protocol: int, pipe: int, src_ia: int, frame: BlockFrame) -> (_Ite
 
 def _create_and_append_item(protocol: int, pipe: int, src_ia: int, frame: BlockFrame):
     if frame.block_header.offset != 0:
+        log.warn("block rx create and append item failed!offset is not 0:%d.token:%d send rst",
+                 frame.block_header.offset, frame.control_word.token)
         send_rst_frame(protocol, pipe, src_ia, SYSTEM_ERROR_WRONG_BLOCK_OFFSET, frame.control_word.rid,
                        frame.control_word.token)
         return
@@ -129,6 +135,9 @@ def _edit_item(protocol: int, pipe: int, item: _Item, frame: BlockFrame):
     global _block_recv
 
     if item.block_header.offset != frame.block_header.offset or item.protocol != protocol or item.pipe != pipe:
+        log.warn("block rx edit item failed!token:%d.item<->frame:offset:%d %d,protocol:%d %d,pipe:%d %d",
+                 frame.control_word.token, item.block_header.offset, frame.block_header.offset, item.protocol, protocol,
+                 item.pipe, pipe)
         return
 
     item.frame.payload.extend(frame.payload)
@@ -138,8 +147,11 @@ def _edit_item(protocol: int, pipe: int, item: _Item, frame: BlockFrame):
     _send_back_frame(item)
 
     if item.block_header.offset >= item.block_header.total:
+        log.info('block rx receive end.token:%d', item.frame.control_word.token)
         crc_calc = crcmodbus.checksum(item.frame.payload)
         if crc_calc != item.block_header.crc16:
+            log.warn('block rx crc is wrong.token:%d crc calc:0x%x get:0x%x', item.frame.control_word.token, crc_calc,
+                     item.block_header.crc16)
             _items.remove(item)
             return
         if _block_recv is not None:
@@ -157,6 +169,7 @@ def block_rx_deal_rst_frame(protocol: int, pipe: int, src_ia: int, frame: Frame)
         if i.protocol == protocol and i.pipe == pipe and i.src_ia == src_ia \
                 and i.frame.control_word.token == frame.control_word.token \
                 and i.frame.control_word.rid == frame.control_word.rid:
+            log.warn("block rx rst.token:%d", i.frame.control_word.token)
             _items.remove(i)
             break
 

@@ -4,8 +4,6 @@ Copyright 2021-2021 The jdh99 Authors. All rights reserved.
 Authors: jdh99 <jdh821@163.com>
 """
 
-import dcompy.log as log
-
 from dcompy.block_rx import *
 from dcompy.rx_con import *
 from dcompy.waitlist import *

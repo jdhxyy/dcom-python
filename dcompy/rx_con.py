@@ -12,6 +12,7 @@ def rx_con(protocol: int, pipe: int, src_ia: int, frame: Frame):
     """
     接收到连接帧时处理函数
     """
+    log.info('rx con.token:%d', frame.control_word.token)
     resp, err = service_callback(protocol, pipe, src_ia, frame.control_word.rid, frame.payload)
 
     # NON不需要应答
@@ -19,11 +20,13 @@ def rx_con(protocol: int, pipe: int, src_ia: int, frame: Frame):
         return
 
     if err != SYSTEM_OK:
+        log.info('service send err:0x%x token:%d', err, frame.control_word.token)
         send_rst_frame(protocol, pipe, src_ia, err, frame.control_word.rid, frame.control_word.token)
         return
 
     if resp and len(resp) > SINGLE_FRAME_SIZE_MAX:
         # 长度过长启动块传输
+        log.info('service send too long:%d.start block tx.token:%d', len(resp), frame.control_word.token)
         block_tx(protocol, pipe, src_ia, CODE_ACK, frame.control_word.rid, frame.control_word.token, resp)
         return
 

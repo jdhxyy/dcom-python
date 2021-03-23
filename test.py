@@ -1,13 +1,18 @@
 import dcompy
+import lagan
 
 
 def main():
-    case6()
+    case1()
 
 
 def case1():
+    lagan.load(0)
+    lagan.set_filter_level(lagan.LEVEL_DEBUG)
+    dcompy.set_filter_level(lagan.LEVEL_DEBUG)
+
     load()
-    req, error = dcompy.call(0, 0, 0x1234, 1, 3000, bytearray([1, 2, 3]))
+    req, error = dcompy.call(0, 0, 0x1234, 1, 10000, bytearray([1, 2, 3]))
     print('0x%x' % error)
     print_hex(req)
 
@@ -69,6 +74,10 @@ def case5():
 
 
 def case6():
+    lagan.load(0)
+    lagan.set_filter_level(lagan.LEVEL_DEBUG)
+    dcompy.set_filter_level(lagan.LEVEL_DEBUG)
+
     load()
     arr = bytearray()
     for i in range(501):

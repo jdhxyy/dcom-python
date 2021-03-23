@@ -56,6 +56,7 @@ def _check_timeout_and_retry_send_first_frame(item: _Item):
     load_param = get_load_param()
     if not item.is_first_frame:
         if now - item.last_rx_ack_time > load_param.block_retry_interval * load_param.block_retry_max_num * 1000:
+            log.warn('block tx timeout!remove task.token:%d', item.token)
             _items.remove(item)
         return
 
@@ -64,14 +65,17 @@ def _check_timeout_and_retry_send_first_frame(item: _Item):
         return
 
     if item.first_frame_retry_num >= load_param.block_retry_max_num:
+        log.warn('block tx timeout!first frame send retry too many.token:%d', item.token)
         _items.remove(item)
     else:
-        _block_tx_send_frame(item, 0)
         item.first_frame_retry_num += 1
         item.first_frame_retry_time = now
+        log.info("block tx send first frame.token:%d retry num:%d", item.token, item.first_frame_retry_num)
+        _block_tx_send_frame(item, 0)
 
 
 def _block_tx_send_frame(item: _Item, offset: int):
+    log.info('block tx send.token:%d offset:%d', item.token, offset)
     delta = len(item.data) - offset
     payload_len = SINGLE_FRAME_SIZE_MAX - BLOCK_HEADER_LEN
     if payload_len > delta:
@@ -94,7 +98,7 @@ def block_tx(protocol: int, pipe: int, dst_ia: int, code: int, rid: int, token: 
     """
     块传输发送
     """
-    if len(data) < SINGLE_FRAME_SIZE_MAX:
+    if len(data) <= SINGLE_FRAME_SIZE_MAX:
         return
 
     _lock.acquire()
@@ -103,6 +107,7 @@ def block_tx(protocol: int, pipe: int, dst_ia: int, code: int, rid: int, token: 
         _lock.release()
         return
 
+    log.info('block tx new task.token:%d dst ia:0x%x code:%d rid:%d', token, dst_ia, code, rid)
     item = _create_item(protocol, pipe, dst_ia, code, rid, token, data)
     _block_tx_send_frame(item, 0)
     item.first_frame_retry_num += 1
@@ -161,10 +166,15 @@ def _check_item_and_deal_back_frame(protocol: int, pipe: int, src_ia: int, frame
     if item.protocol != protocol or item.pipe != pipe or item.dst_ia != src_ia or \
             item.rid != frame.control_word.rid or item.token != frame.control_word.token:
         return False
+    log.info('block tx receive back.token:%d', item.token)
     if frame.control_word.payload_len != 2:
+        log.warn('block rx receive back deal failed!token:%d payload len is wrong:%d', item.token,
+                 frame.control_word.payload_len)
         return False
     start_offset = (frame.payload[0] << 8) + frame.payload[1]
     if start_offset >= len(item.data):
+        log.warn('block rx receive back deal failed!token:%d start offset:%d > data len:%d"', item.token, start_offset,
+                 len(item.data))
         _items.remove(item)
         return True
 
@@ -184,6 +194,19 @@ def block_tx_deal_rst_frame(protocol: int, pipe: int, src_ia: int, frame: Frame)
     for item in _items:
         if item.protocol == protocol and item.pipe == pipe and item.dst_ia == src_ia \
                 and item.rid == frame.control_word.rid and item.token == frame.control_word.token:
+            log.warn('block tx receive rst.token:%d', item.token)
+            _items.remove(item)
+            break
+    _lock.release()
+
+
+def block_remove(protocol: int, pipe: int, dst_ia: int, code: int, rid: int, token: int):
+    """块传输发送移除任务"""
+    _lock.acquire()
+    for item in _items:
+        if item.protocol == protocol and item.pipe == pipe and item.dst_ia == dst_ia and item.code == code and \
+                item.rid == rid and item.token == token:
+            log.warn('block tx remove task.token:%d', item.token)
             _items.remove(item)
             break
     _lock.release()

@@ -8,7 +8,7 @@ import lagan
 
 _TAG = "dcom"
 
-_filter_level = lagan.LEVEL_OFF
+_filter_level = lagan.LEVEL_WARN
 
 
 def set_filter_level(level):
