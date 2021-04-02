@@ -26,12 +26,12 @@ def load():
     dcompy.load(param)
 
 
-def is_allow_send(port: int) -> bool:
+def is_allow_send(pipe: int) -> bool:
     return True
 
 
-def send(protocol: int, port: int, dst_ia: int, data: bytearray):
-    print("protocol:%d dst_ia:%x, port:%d send:" % (protocol, dst_ia, port))
+def send(protocol: int, pipe: int, dst_ia: int, data: bytearray):
+    print("protocol:%d dst_ia:%x, pipe:%d send:" % (protocol, dst_ia, pipe))
     print_hex(data)
 
 
